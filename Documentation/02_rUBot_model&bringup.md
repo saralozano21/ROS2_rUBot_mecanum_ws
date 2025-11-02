@@ -277,7 +277,7 @@ The gazebo plugin we have used is:
   </gazebo>
 ```
 We have to consider 2 kind of robots:
-- **rUBot**: its Lidar has scan range from -180º to +180º with 1 laser beam/degree
+- **rUBot**: its Lidar has scan range from -180º to +180º with 2 laser beam/degree
   ````xml
   <scan>
     <horizontal>

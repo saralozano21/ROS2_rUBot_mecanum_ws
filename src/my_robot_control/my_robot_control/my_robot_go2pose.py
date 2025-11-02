@@ -1,119 +1,99 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist, Pose
+from geometry_msgs.msg import Twist, Pose, Quaternion
 from nav_msgs.msg import Odometry
 from math import pow, atan2, sqrt, degrees, radians, sin, cos
-from tf_transformations import euler_from_quaternion
+from tf_transformations import euler_from_quaternion, quaternion_from_euler
 
 class Rubot(Node):
 
     def __init__(self):
         super().__init__('rubot_control_node')
-        
-        # Declaració i obtenció de paràmetres
+
         self.declare_parameter('x', 0.0)
         self.declare_parameter('y', 0.0)
         self.declare_parameter('f', 0.0)
+
         self.x_goal = self.get_parameter('x').value
         self.y_goal = self.get_parameter('y').value
         self.f_goal = radians(self.get_parameter('f').value)
         
-        # Variables de posició
         self.x_pose = 0.0
         self.y_pose = 0.0
         self.yaw = 0.0
+
+        # NOU: Bandera per controlar si hem rebut la primera lectura d'odometria
         self.odom_received = False
 
-        # Publicadors i subscriptors
         self.velocity_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
         self.odom_subscriber = self.create_subscription(Odometry, '/odom', self.update_odom, 10)
         self.rate = self.create_rate(10)
 
     def update_odom(self, data):
-        """Actualitza la posició i orientació del robot."""
+        """Aquesta funció s'activa amb cada missatge d'/odom."""
         self.x_pose = data.pose.pose.position.x
         self.y_pose = data.pose.pose.position.y
         orientation_q = data.pose.pose.orientation
         orientation_list = [orientation_q.x, orientation_q.y, orientation_q.z, orientation_q.w]
         (_, _, self.yaw) = euler_from_quaternion(orientation_list)
-        if not self.odom_received:
-            self.odom_received = True
-            self.get_logger().info('Odometria rebuda per primer cop.')
+        
+        # NOU: Marquem que ja hem rebut dades
+        self.odom_received = True
 
-    def stop_robot(self):
-        """Envia un missatge de velocitat zero per aturar el robot."""
-        vel_msg = Twist()
-        vel_msg.linear.x = 0.0
-        vel_msg.angular.z = 0.0
-        self.velocity_publisher.publish(vel_msg)
+    def euclidean_distance(self, goal_pose):
+        return sqrt(pow((goal_pose.position.x - self.x_pose), 2) +
+                    pow((goal_pose.position.y - self.y_pose), 2))
+
+    def steering_angle(self, goal_pose):
+        return atan2(goal_pose.position.y - self.y_pose, goal_pose.position.x - self.x_pose)
+
+    def angular_vel(self, goal_pose, constant=5.0):
+        angle_error = self.steering_angle(goal_pose) - self.yaw
+        angle_error_normalized = atan2(sin(angle_error), cos(angle_error))
+        return constant * angle_error_normalized
 
     def move2pose(self):
-        """Mou el robot a la posició i orientació desitjades en 3 fases."""
+        """Mou el robot a la posició i orientació desitjades."""
         
-        # Espera fins a tenir una lectura d'odometria vàlida
+        # --- CORRECCIÓ CLAU ---
+        # Bucle d'espera: no fa res fins que la bandera odom_received sigui True.
         while not self.odom_received and rclpy.ok():
-            self.get_logger().info('Esperant odometria...')
-            rclpy.spin_once(self, timeout_sec=1.0)
+            self.get_logger().info('Esperant la primera lectura de l\'odometria...')
+            rclpy.spin_once(self, timeout_sec=0.5)
 
+        self.get_logger().info('Odometria rebuda. Començant moviment.')
+        
         goal_pose = Pose()
         goal_pose.position.x = self.x_goal
         goal_pose.position.y = self.y_goal
 
-        distance_tolerance = 0.15  # Tolerància de distància
-        angle_tolerance = 0.1    # Tolerància d'angle en radians
+        distance_tolerance = 0.1
+        angle_tolerance = 0.1 # en radians
 
         vel_msg = Twist()
 
-        # --- FASE 1: Girar per encarar l'objectiu (X, Y) ---
-        self.get_logger().info('FASE 1: Girant per encarar l\'objectiu.')
-        target_angle = atan2(goal_pose.position.y - self.y_pose, goal_pose.position.x - self.x_pose)
-        angle_error = target_angle - self.yaw
-        
-        while rclpy.ok() and abs(atan2(sin(angle_error), cos(angle_error))) >= angle_tolerance:
-            angle_error = target_angle - self.yaw
-            normalized_error = atan2(sin(angle_error), cos(angle_error))
-            
-            vel_msg.linear.x = 0.0
-            vel_msg.angular.z = 0.5 * normalized_error # Guany per al gir
+        while rclpy.ok() and self.euclidean_distance(goal_pose) >= distance_tolerance:
+            vel_msg.linear.x = 0.5 * self.euclidean_distance(goal_pose)
+            vel_msg.angular.z = self.angular_vel(goal_pose)
             self.velocity_publisher.publish(vel_msg)
+            self.get_logger().info(f"Distància a l'objectiu: {self.euclidean_distance(goal_pose):.2f}")
             self.rate.sleep()
         
-        self.stop_robot()
-        self.get_logger().info('FASE 1 completada.')
+        vel_msg.linear.x = 0.0
+        self.velocity_publisher.publish(vel_msg)
 
-        # --- FASE 2: Avançar cap a l'objectiu ---
-        self.get_logger().info('FASE 2: Avançant cap a l\'objectiu.')
-        while rclpy.ok() and sqrt(pow(goal_pose.position.x - self.x_pose, 2) + pow(goal_pose.position.y - self.y_pose, 2)) >= distance_tolerance:
-            # Guany (velocitat) proporcional a la distància
-            vel_msg.linear.x = 0.5 * sqrt(pow(goal_pose.position.x - self.x_pose, 2) + pow(goal_pose.position.y - self.y_pose, 2))
-            
-            # Petita correcció de rumb mentre avança
-            target_angle = atan2(goal_pose.position.y - self.y_pose, goal_pose.position.x - self.x_pose)
-            angle_error = target_angle - self.yaw
-            normalized_error = atan2(sin(angle_error), cos(angle_error))
-            vel_msg.angular.z = 0.5 * normalized_error
-            
-            self.velocity_publisher.publish(vel_msg)
-            self.rate.sleep()
-            
-        self.stop_robot()
-        self.get_logger().info('FASE 2 completada.')
-
-        # --- FASE 3: Girar per assolir l'orientació final ---
-        self.get_logger().info('FASE 3: Ajustant orientació final.')
         orientation_error = self.f_goal - self.yaw
-        
         while rclpy.ok() and abs(atan2(sin(orientation_error), cos(orientation_error))) >= angle_tolerance:
             orientation_error = self.f_goal - self.yaw
             normalized_error = atan2(sin(orientation_error), cos(orientation_error))
-
-            vel_msg.linear.x = 0.0
-            vel_msg.angular.z = 0.5 * normalized_error # Guany més suau per al gir final
+            vel_msg.angular.z = normalized_error * 2.0
             self.velocity_publisher.publish(vel_msg)
+            self.get_logger().info(f"Error d'orientació: {degrees(normalized_error):.2f} graus")
             self.rate.sleep()
 
-        self.stop_robot()
+        vel_msg.angular.z = 0.0
+        self.velocity_publisher.publish(vel_msg)
         self.get_logger().info("Objectiu (POSE) assolit!")
 
 def main(args=None):
@@ -122,9 +102,10 @@ def main(args=None):
     try:
         rubot.move2pose()
     except KeyboardInterrupt:
-        rubot.get_logger().info("Aturant el node per l'usuari.")
+        rubot.get_logger().info("Aturant el node.")
     finally:
-        rubot.stop_robot()
+        stop_msg = Twist()
+        rubot.velocity_publisher.publish(stop_msg)
         rubot.destroy_node()
         rclpy.shutdown()
 
