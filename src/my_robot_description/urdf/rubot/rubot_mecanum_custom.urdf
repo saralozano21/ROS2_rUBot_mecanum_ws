@@ -160,28 +160,29 @@
 
 <!--New 3D red piece-->
 <joint name="red_piece_joint" type="fixed">
-    <origin rpy="0 0 0" xyz="-0.1 0.01 0.06">
-    <parent link="base_link"/>
-    <child link="red_piece"/> 
-    <axis xyz="0 -1 0"/>
+  <origin rpy="0 0 0" xyz="-0.1 0.01 0.06"/>
+  <parent link="base_link"/>
+  <child link="red_piece"/> 
+  <axis xyz="0 -1 0"/>
 </joint>
+
 <link name="red_piece">
-    <visual>
-        <origin rpy="0 0 0" xyz="0 0 0">
-        <geometry>
-            <mesh filename="file://$(find my_robot_description)/meshes/rubot/number2.stl" scale="0.001 0.001 0.001"/>
-        </geometry>
-        <material name="red"/>
-    </visual>
-    <collision>
-        <geometry>
-            <cylinder length="0.03" radius="0.055"/>
-        </geometry>
-    </collision>
-    <interial>
-        <mass value="0.1"/>
-        <intertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
-    </interial>
+  <visual>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <geometry>
+      <mesh filename="file://$(find my_robot_description)/meshes/rubot/number2.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="red"/>
+  </visual>
+  <collision>
+    <geometry>
+      <cylinder length="0.03" radius="0.055"/>
+    </geometry>
+  </collision>
+  <inertial>
+    <mass value="0.1"/>
+    <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+  </inertial>
 </link>
 
 <!-- 2D Camera as a mesh of actual PiCamera -->
@@ -416,7 +417,7 @@
     <maxVel>0.5</maxVel>
     <fdir1>1 0 0</fdir1>
   </gazebo>
-  <gazebo reference="red_box">
+  <gazebo reference="red_piece">
     <material>Gazebo/Red</material>
   </gazebo>
 </robot>
