@@ -159,21 +159,23 @@
   </link> 
 
 <!--New 3D red piece-->
-<joint name="red_box_joint" type="fixed">
-    <origin xyz="0.0 0.0 0.18" rpy="0 0 0">
+<joint name="red_piece_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="-0.1 0.01 0.06">
     <parent link="base_link"/>
-    <child link="red_box"/> 
+    <child link="red_piece"/> 
+    <axis xyz="0 -1 0"/>
 </joint>
-<link name="red_box">
+<link name="red_piece">
     <visual>
+        <origin rpy="0 0 0" xyz="0 0 0">
         <geometry>
-            <box size="0.1 0.1 0.05"/>
+            <mesh filename="file://$(find my_robot_description)/meshes/rubot/number2.stl" scale="0.001 0.001 0.001"/>
         </geometry>
         <material name="red"/>
     </visual>
     <collision>
         <geometry>
-            <box size="0.1 0.1 0.05"/>
+            <cylinder length="0.03" radius="0.055"/>
         </geometry>
     </collision>
     <interial>
