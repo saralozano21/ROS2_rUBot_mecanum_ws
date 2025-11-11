@@ -1,6 +1,6 @@
 <?xml version='1.0'?>
 <sdf version='1.7'>
-  <model name='Untitled'>
+  <model name='my_project_model'>
     <pose>-0.925 -2.825 0 0 -0 0</pose>
     <link name='Wall_1'>
       <collision name='Wall_1_Collision'>
