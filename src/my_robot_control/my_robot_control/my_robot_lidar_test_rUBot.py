@@ -35,6 +35,28 @@ class LidarTest(Node):
         dist_neg90_deg = scan.ranges[index_neg90_deg]
         dist_pos90_deg = scan.ranges[index_pos90_deg]
 
+<<<<<<< HEAD
+
+        #dist_0 = distance_at_angle(0.0)
+        #dist_90 = distance_at_angle(-math.pi / 2)
+        #dist_neg90 = distance_at_angle(math.pi / 2)
+
+        dist_front = distance_at_angle(0.0)
+        dist_right = distance_at_angle(math.pi / 2)      # +90°
+        dist_left  = distance_at_angle(-math.pi / 2)     # -90°  
+
+
+        # Mostrem per pantalla
+        self.get_logger().info(f"Minimum distance: {min_distance:.2f} m at angle {math.degrees(min_angle):.1f}º")
+        #self.get_logger().info(f"Dist. 0º: {dist_0:.2f} m, 90º: {dist_90:.2f} m, -90º: {dist_neg90:.2f} m")
+        self.get_logger().info(
+            f"Dist. 0º (front): {dist_front:.2f} m, "
+            f"+90º (right): {dist_right:.2f} m, "
+            f"-90º (left): {dist_left:.2f} m"
+        )
+
+
+=======
         self.get_logger().info("---- LIDAR readings ----")
         self.get_logger().info(f"Distance at 0°: {dist_0_deg:.2f} m" if dist_0_deg else "No valid reading at 0°")
         self.get_logger().info(f"Distance at -90°: {dist_neg90_deg:.2f} m" if dist_neg90_deg else "No valid reading at -90°")
@@ -54,6 +76,7 @@ class LidarTest(Node):
                 custom_range.append((distance, angle_robot_deg))
             else:
                 continue
+>>>>>>> b5e9b85 (Correccio posicio lidar i red piece)
 
         if not custom_range:
             return
