@@ -7,8 +7,8 @@ import math
 
 class RobotSelfControl(Node):
 
-    def __init__(self):
-        super().__init__('robot_selfcontrol_node')
+    def _init_(self):
+        super()._init_('robot_selfcontrol_node')
 
         # Configurable parameters
         self.declare_parameter('distance_limit', 0.3)
@@ -16,16 +16,19 @@ class RobotSelfControl(Node):
         self.declare_parameter('forward_speed', 0.2)
         self.declare_parameter('rotation_speed', 0.3)
         self.declare_parameter('time_to_stop', 5.0)
+        self.declare_parameter('lateral_speed', 0.2)  # Afegeixo lateral speed
 
         self._distanceLimit = self.get_parameter('distance_limit').value
         self._speedFactor = self.get_parameter('speed_factor').value
         self._forwardSpeed = self.get_parameter('forward_speed').value
         self._rotationSpeed = self.get_parameter('rotation_speed').value
         self._time_to_stop = self.get_parameter('time_to_stop').value
+        self._lateralSpeed = self.get_parameter('lateral_speed').value
 
         self._msg = Twist()
         self._msg.linear.x = self._forwardSpeed * self._speedFactor
         self._msg.angular.z = 0.0
+        self._msg.linear.y = 0.0  # New: lateral movement, linear.y > 0 : right
 
         self._cmdVel = self.create_publisher(Twist, '/cmd_vel', 10)
         self.timer = self.create_timer(0.05, self.timer_callback)
@@ -50,7 +53,7 @@ class RobotSelfControl(Node):
         self._cmdVel.publish(self._msg)
 
         if now_sec - self._last_speed_time >= 1:
-            self.get_logger().info(f"Vx: {self._msg.linear.x:.2f} m/s, w: {self._msg.angular.z:.2f} rad/s | Time: {elapsed_time:.1f}s")
+            self.get_logger().info(f"Vx: {self._msg.linear.x:.2f} m/s, Vy: {self._msg.linear.y:.2f} m/s, w: {self._msg.angular.z:.2f} rad/s | Time: {elapsed_time:.1f}s") #afegeixo vy
             self._last_speed_time = now_sec
         if elapsed_time >= self._time_to_stop:
             self.stop()
@@ -104,31 +107,44 @@ class RobotSelfControl(Node):
             self.get_logger().info(f"[DETECTION] Distance: {closest_distance:.2f} m | Angle: {angle_closest_distance:.0f}° | Zone: {zone}")
             self._last_info_time = now
 
-        # React to obstacle
+        # HOLONOMIC BEHAVIOR: React to obstacle with lateral movement
         if closest_distance < self._distanceLimit:
             if zone == "FRONT":
+                # Obstacle in front: move backward
                 self._msg.linear.x = -self._forwardSpeed * self._speedFactor
+                self._msg.linear.y = 0.0
                 self._msg.angular.z = self._rotationSpeed * self._speedFactor
             elif zone == "LEFT":
-                self._msg.linear.x = -self._forwardSpeed * self._speedFactor
-                self._msg.angular.z = -self._rotationSpeed * self._speedFactor
+                # Obstacle on left: strafe RIGHT (positive y) WITHOUT rotation
+                self._msg.linear.x = self._forwardSpeed * self._speedFactor #ns si ha de posar 0.0
+                self._msg.linear.y = self._lateralSpeed * self._speedFactor
+                self._msg.angular.z = 0.0
             elif zone == "RIGHT":
-                self._msg.linear.x = -self._forwardSpeed * self._speedFactor
-                self._msg.angular.z = self._rotationSpeed * self._speedFactor
+                # Obstacle on right: strafe LEFT (negative y) WITHOUT rotation
+                self._msg.linear.x = self._forwardSpeed * self._speedFactor #ns si 0.0
+                self._msg.linear.y = -self._lateralSpeed * self._speedFactor
+                self._msg.angular.z = 0.0
             elif zone in ["BACK_LEFT", "BACK_RIGHT"]:
+                # Obstacle behind: move forward
                 self._msg.linear.x = self._forwardSpeed * self._speedFactor
+                self._msg.linear.y = 0.0
                 self._msg.angular.z = 0.0
             else:
+                # Default: move forward
                 self._msg.linear.x = self._forwardSpeed * self._speedFactor
+                self._msg.linear.y = 0.0
                 self._msg.angular.z = 0.0
         else:
+            # No obstacle: move forward
             self._msg.linear.x = self._forwardSpeed * self._speedFactor
+            self._msg.linear.y = 0.0
             self._msg.angular.z = 0.0
 
     def stop(self):
         self._shutting_down = True
         stop_msg = Twist()
         stop_msg.linear.x = 0.0
+        stop_msg.linear.y = 0.0
         stop_msg.angular.z = 0.0
         self._cmdVel.publish(stop_msg)
         rclpy.spin_once(self, timeout_sec=0.1)
