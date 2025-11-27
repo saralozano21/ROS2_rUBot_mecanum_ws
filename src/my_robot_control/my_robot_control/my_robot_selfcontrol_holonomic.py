@@ -150,6 +150,14 @@ class RobotSelfControl(Node):
             self._msg.linear.x = -self._forwardSpeed * self._speedFactor
             self._msg.linear.y = 0.0
 
+    def stop(self):
+        self._shutting_down = True
+        stop_msg = Twist()
+        stop_msg.linear.x = 0.0
+        stop_msg.angular.z = 0.0
+        self._cmdVel.publish(stop_msg)
+        rclpy.spin_once(self, timeout_sec=0.1)
+
 
 
 def main(args=None):
