@@ -147,8 +147,8 @@ class RobotSelfControl(Node):
             self._msg.linear.y = -self._forwardSpeed * self._speedFactor
 
         elif self._current_mode == "BACKWARD":
-            self._msg.linear.x = -self._forwardSpeed * self._speedFactor
-            self._msg.linear.y = 0.0
+            self._msg.linear.x = -self._forwardSpeed * self._speedFactor 
+            self._msg.linear.y = self._forwardSpeed * 0.4
 
     def stop(self):
         self._shutting_down = True

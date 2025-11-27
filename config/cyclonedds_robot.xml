@@ -3,13 +3,13 @@
 <Domain id="any">
     <General>
     <!-- Bind CycloneDDS to the robot's IP address -->
-    <NetworkInterfaceAddress>192.168.1.54</NetworkInterfaceAddress>
+    <NetworkInterfaceAddress>192.168.1.24</NetworkInterfaceAddress>
     <AllowMulticast>true</AllowMulticast>
     </General>
     <Discovery>
     <!-- Explicitly add the PC as a unicast peer -->
     <Peers>
-        <Peer address="192.168.1.55"/>
+        <Peer address="192.168.1.25"/>
     </Peers>
     </Discovery>
 </Domain>
