@@ -11,89 +11,72 @@ class WallFollowerHolonomic(Node):
         super().__init__('wall_follower_holonomic_node')
 
         # Parameters
-        self.declare_parameter('distance_limit', 0.5)    # desired distance to right wall
-        self.declare_parameter('forward_speed', 0.20)    # linear speed
-        self.declare_parameter('turn_speed', 0.40)       # angular speed
-        self.declare_parameter('time_to_stop', 30.0)     # auto-stop
+        self.declare_parameter('distance_limit', 0.5)
+        self.declare_parameter('forward_speed', 0.25)
+        self.declare_parameter('side_speed', 0.20)
+        self.declare_parameter('time_to_stop', 40.0)
         self.declare_parameter('tolerance', 0.05)        # band around base_distance (RIGHT)
 
-        self.base_distance = float(self.get_parameter('distance_limit').value)
+        self.dist_lim = float(self.get_parameter('distance_limit').value)
         self.v_lin = float(self.get_parameter('forward_speed').value)
-        self.v_ang = float(self.get_parameter('turn_speed').value)
+        self.v_ang = float(self.get_parameter('side_speed').value)
         self.time_to_stop = float(self.get_parameter('time_to_stop').value)
         self.tol = float(self.get_parameter('tolerance').value)
 
-        # Last commanded twist (will be published periodically)
+
         self.cmd = Twist()
 
-        # ROS 2 entities
         self.subscription = self.create_subscription(
             LaserScan, '/scan', self.laser_callback, qos_profile_sensor_data
         )
         self.publisher = self.create_publisher(Twist, '/cmd_vel', 10)
 
         # Timers
-        self.info_timer = self.create_timer(1.0, self.log_info)
+        self.log_timer = self.create_timer(1.0, self.log_status)
+        self.cmd_timer = self.create_timer(0.1, self.send_cmd)
         self.stop_timer = self.create_timer(0.05, self.stop_watchdog)
 
-        # Periodic cmd_vel publisher at 10 Hz (0.1 s)
-        self.cmd_timer = self.create_timer(0.1, self.cmd_publish_timer_cb)
-
-        self._state_action = "Idle"
-        self._last_action_logged = None
-        self._shutting_down = False
-
         self.start_time_s = self.get_clock().now().nanoseconds * 1e-9
+        self._shutting_down = False
+        self._state = "Idle"
+        self._last_logged_state = None
 
-        self.get_logger().info(
-            "WallFollower (RIGHT tol, BACK_RIGHT when closest) - differential drive."
-        )
+        self.get_logger().info("Holonomic Wall Follower — READY.")
 
-    #--------------------------------------------------------------------
+    # -----------------------------------------
     def stop_watchdog(self):
-        """Stop the robot after time_to_stop seconds."""
         if self._shutting_down:
             return
         now = self.get_clock().now().nanoseconds * 1e-9
         if now - self.start_time_s >= self.time_to_stop:
-            self.get_logger().info("Stopping due to timeout.")
+            self.get_logger().info("Timeout reached. Stopping robot.")
             self.stop()
 
-    #--------------------------------------------------------------------
+    # -----------------------------------------
     def stop(self):
-        """Safe stop: set cmd to zero Twist, try to publish once, stop timers."""
         self._shutting_down = True
-
-        # Set last command to zero
         self.cmd = Twist()
 
-        # Try a final publish (publisher may still be valid even if shutdown started)
         try:
             self.publisher.publish(self.cmd)
         except Exception:
-            # Context/publisher may already be invalid -> ignore
             pass
 
-        # Cancel timers safely
-        for t in [self.info_timer, self.stop_timer, self.cmd_timer]:
+        for timer in [self.log_timer, self.cmd_timer, self.stop_timer]:
             try:
-                t.cancel()
+                timer.cancel()
             except Exception:
                 pass
 
-    #--------------------------------------------------------------------
-    def cmd_publish_timer_cb(self):
-        """Periodic publisher: send the latest cmd_vel at 10 Hz."""
-        if self._shutting_down:
-            return
+    # -----------------------------------------
+    def send_cmd(self):
+        if not self._shutting_down:
+            try:
+                self.publisher.publish(self.cmd)
+            except Exception:
+                pass
 
-        try:
-            self.publisher.publish(self.cmd)
-        except Exception:
-            # If the context or publisher is invalid, ignore
-            pass
-
-    #--------------------------------------------------------------------
+    # -----------------------------------------
     def laser_callback(self, scan):
         if self._shutting_down:
             return
@@ -152,51 +135,85 @@ class WallFollowerHolonomic(Node):
         twist = Twist()
         state = ""
 
-        # ------------------------------------------------------------
-        #  HOLONOMIC BEHAVIOUR — EXACTLY AS REQUESTED BY THE ASSIGNMENT
-        # ------------------------------------------------------------
-
+            # 1️⃣ Obstacle frontal → moure lateral i girar lleuger
         if min_front < self.dist_lim:
-            # Obstacle in front → move LEFT
             twist.linear.x = 0.0
-            twist.linear.y = +self.vy
-            twist.angular.z = 0.0
-            state = "FRONT → Move LEFT"
+            twist.linear.y = +self.vy       # moure lateralment (a l’esquerra)
+            twist.angular.z = +0.3          # gir lleuger per alinear-se
+            state = "FRONT → lateral LEFT + adjust angle"
 
+        # 2️⃣ Obstacle front-right → moure diagonal esquerra-avant
         elif min_fr_right < self.dist_lim:
-            # Obstacle front-right → move front-left (diagonal)
-            twist.linear.x = +self.vx
+            twist.linear.x = +self.vx * 0.5
             twist.linear.y = +self.vy
-            twist.angular.z = 0.0
-            state = "FRONT-RIGHT → Move FRONT-LEFT"
+            twist.angular.z = +0.2
+            state = "FRONT-RIGHT → move diagonally FRONT-LEFT"
 
-        elif min_right < self.dist_lim:
-            # Right wall → follow it going forward
-            twist.linear.x = +self.vx
-            twist.linear.y = 0.0
-            twist.angular.z = 0.0
-            state = "RIGHT → Move FORWARD"
+        # 3️⃣ Paret a la dreta → seguir paral·lelament
+        elif math.isfinite(min_right):
+            error = min_right - self.dist_lim
 
-        elif min_back_right < self.dist_lim:
-            # Behind on right → move front-right (diagonal)
-            twist.linear.x = +self.vx
+            twist.linear.x = self.vx               # avançar
+            twist.linear.y = 0.0                   # lateral 0 si paral·lel
+
+            # Ajust angular segons error
+            twist.angular.z = -0.5 * error         # error >0 → gir lleuger a dreta, error <0 → esquerra
+
+            state = f"RIGHT visible → follow wall, error={error:.2f}"
+
+        # 4️⃣ Back-right → ajustar lateral i angle si no hi ha dret
+        elif math.isfinite(min_back_right):
+            twist.linear.x = self.vx * 0.5
             twist.linear.y = -self.vy
-            twist.angular.z = 0.0
-            state = "BACK-RIGHT → Move FRONT-RIGHT"
+            twist.angular.z = -0.3
+            state = "BACK-RIGHT → move FRONT-RIGHT diagonal"
 
-        elif min_back < self.dist_lim:
-            # Something behind → move RIGHT
-            twist.linear.x = 0.0
-            twist.linear.y = -self.vy
-            twist.angular.z = 0.0
-            state = "BACK → Move RIGHT"
-
+        # 5️⃣ No obstacles → avançar endavant
         else:
-            # No obstacles near → just go forward
             twist.linear.x = self.vx
             twist.linear.y = 0.0
             twist.angular.z = 0.0
-            state = "CLEAR → Move FORWARD"
+            state = "CLEAR → move forward"
+
+        #elif min_right < self.dist_lim:
+        #    twist.linear.x = +self.v_lin
+         #   twist.linear.y = 0.0
+          #  twist.angular.z = 0.0
+           # state = "RIGHT → Move FORWARD"
+
+        #elif min_left < self.dist_lim:
+         #   twist.linear.x = +self.v_lin
+          #  twist.linear.y = 0.0
+           # twist.angular.z = 0.0
+            #state = "left → Move FORWARD"
+
+        
+        #elif min_back_right < self.dist_lim:
+         #   # Behind on right → move front-right (diagonal)
+          #  twist.linear.x = +self.v_lin
+           # twist.linear.y = -self.v_lin
+            #twist.angular.z = 0.0
+            #state = "BACK-RIGHT → Move FRONT-RIGHT"
+
+        #elif min_back_left < self.dist_lim:
+         #   twist.linear.x = +self.v_lin
+          #  twist.linear.y = self.v_lin
+           # twist.angular.z = 0.0
+            #state = "BACK-left → Move FRONT-LEFT"
+
+        #elif min_back < self.dist_lim:
+            # Something behind → move RIGHT
+         #   twist.linear.x = 0.0
+          #  twist.linear.y = -self.v_lin
+           # twist.angular.z = 0.0
+           # state = "BACK → Move RIGHT"
+
+        #else:
+            # No obstacles near → just go forward
+         #   twist.linear.x = self.v_lin
+          #  twist.linear.y = 0.0
+           # twist.angular.z = 0.0
+            #state = "CLEAR → Move FORWARD"
 
         # Update cmd
         self.cmd = twist
@@ -205,10 +222,12 @@ class WallFollowerHolonomic(Node):
         if state != self._last_logged_state:
             self.get_logger().info(state)
             self._last_logged_state = state
-    #--------------------------------------------------------------------
-    def log_info(self):
+
+    # -----------------------------------------
+    def log_status(self):
         if not self._shutting_down:
-            self.get_logger().info(self._state_action)
+            self.get_logger().info(self._state)
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -222,9 +241,9 @@ def main(args=None):
             node.destroy_node()
         except Exception:
             pass
-
         if rclpy.ok():
             rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()
