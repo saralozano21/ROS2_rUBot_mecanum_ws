@@ -19,7 +19,6 @@ class WallFollowerHolonomic(Node):
 
         self.dist_lim = float(self.get_parameter('distance_limit').value)
         self.v_lin = float(self.get_parameter('forward_speed').value)
-        self.v_lat = self.v_lin * 0.75  # Ahora v_lin existe
         self.v_ang = float(self.get_parameter('turn_speed').value)
         self.time_to_stop = float(self.get_parameter('time_to_stop').value)
         self.tol = float(self.get_parameter('tolerance').value)
@@ -132,115 +131,136 @@ class WallFollowerHolonomic(Node):
         twist = Twist()
         state = ""
 
-        # ============================================================
-        #  HOLONOMIC BEHAVIOUR 
-        # ============================================================
+        # ------------------------------------------------------------
+        #  HOLONOMIC BEHAVIOUR — EXACTLY AS REQUESTED BY THE ASSIGNMENT
+        # ------------------------------------------------------------
 
-        # RULE 1: FRONT obstacle → move LEFT (lateral movement)
+        #----------------------------------------------------------
+        # RULE 1: FRONT obstacle → turn left
+        #----------------------------------------------------------
         if min_front < self.dist_lim:
             twist.linear.x = 0.0
-            twist.linear.y = self.v_lat  # Move left laterally
-            twist.angular.z = 0.0
-            state = f"FRONT obstacle at {min_front:.2f}m → Moving LEFT (holonomic)"
+            twist.linear.y = 0.0
+            twist.angular.z = self.v_ang * 2.0
+            state = f"FRONT {min_front:.2f} m → turn LEFT"
 
-        # RULE 2: FRONT-RIGHT obstacle → move FRONT-LEFT (diagonal)
+        #----------------------------------------------------------
+        # RULE 2: FRONT-RIGHT obstacle → slow + left
+        #----------------------------------------------------------
         elif min_fr_right < self.dist_lim:
-            twist.linear.x = self.v_lin * 0.7
-            twist.linear.y = self.v_lat * 0.7  # Diagonal movement
-            twist.angular.z = 0.0
-            state = f"FRONT-RIGHT obstacle at {min_fr_right:.2f}m → Moving FRONT-LEFT (holonomic)"
-
-        # RULE 2.1: FRONT-LEFT obstacle → move FRONT-RIGHT (diagonal)
+            twist.linear.x = 0.0
+            twist.linear.y = 0.0
+            twist.angular.z = self.v_ang * 2.0
+            state = f"FRONT-RIGHT {min_fr_right:.2f} m → turn LEFT"
+        #----------------------------------------------------------
+        # RULE 2.1: FRONT-LEFT obstacle → slow + right
+        #----------------------------------------------------------
         elif min_fr_left < self.dist_lim:
-            twist.linear.x = self.v_lin * 0.7
-            twist.linear.y = -self.v_lat * 0.7  # Diagonal movement
-            twist.angular.z = 0.0
-            state = f"FRONT-LEFT obstacle at {min_fr_left:.2f}m → Moving FRONT-RIGHT (holonomic)"
-
-        # RULE 3: RIGHT wall → move forward and maintain parallel orientation
+            twist.linear.x = 0.0
+            twist.linear.y = 0.0
+            twist.angular.z = self.v_ang * -2.0
+            state = f"FRONT-LEFT {min_fr_left:.2f} m → turn RIGHT"
+        #----------------------------------------------------------
+        # RULE 3: RIGHT visible → control with tolerance band (no vy)
+        #----------------------------------------------------------
         elif math.isfinite(min_right):
+            # error > 0 → too far; error < 0 → too close
             error = min_right - self.dist_lim
 
             if abs(error) <= self.tol:
-                # Perfect distance: move straight forward
+                # Inside band: go straight
                 twist.linear.x = self.v_lin
                 twist.linear.y = 0.0
                 twist.angular.z = 0.0
-                state = f"RIGHT wall at {min_right:.2f}m (OK) → Moving FORWARD parallel"
+                state = (
+                    f"RIGHT ~OK ({min_right:.2f} m, target "
+                    f"{self.dist_lim:.2f}±{self.tol:.2f}) → STRAIGHT"
+                )
 
             elif error < 0:
-                # Too close to right wall: move forward + slight left lateral
-                twist.linear.x = self.v_lin
-                twist.linear.y = self.v_lat * 0.3  # Slight lateral correction
-                twist.angular.z = 0.0
-                state = f"RIGHT wall TOO CLOSE at {min_right:.2f}m → Forward + LEFT correction"
+                # Too close to right wall → slow forward + stronger left turn
+                twist.linear.x = self.v_lin * 0.5
+                twist.linear.y = 0.0
+                twist.angular.z = self.v_ang * 2.0
+                state = (
+                    f"RIGHT too CLOSE ({min_right:.2f} m < "
+                    f"{self.dist_lim:.2f}-{self.tol:.2f}) → "
+                    f"forward + strong LEFT turn"
+                )
 
             else:
-                # Too far from right wall: move forward + slight right lateral
-                twist.linear.x = self.v_lin
-                twist.linear.y = -self.v_lat * 0.3  # Slight lateral correction
-                twist.angular.z = 0.0
-                state = f"RIGHT wall TOO FAR at {min_right:.2f}m → Forward + RIGHT correction"
+                # Too far from right wall → slow forward + stronger right turn
+                twist.linear.x = self.v_lin * 0.5
+                twist.linear.y = 0.0
+                twist.angular.z = -self.v_ang * 2.0
+                state = (
+                    f"RIGHT too FAR ({min_right:.2f} m > "
+                    f"{self.dist_lim:.2f}+{self.tol:.2f}) → "
+                    f"forward + strong RIGHT turn"
+                )
 
-        # RULE 3.1: LEFT wall → move forward and maintain parallel orientation
+#----------------------------------------------------------
+        # RULE 3.1: LEFT visible → control with tolerance band (no vy)
+        #----------------------------------------------------------
         elif math.isfinite(min_left):
+            # error > 0 → too far; error < 0 → too close
             error = min_left - self.dist_lim
 
             if abs(error) <= self.tol:
-                # Perfect distance: move straight forward
+                # Inside band: go straight
                 twist.linear.x = self.v_lin
                 twist.linear.y = 0.0
                 twist.angular.z = 0.0
-                state = f"LEFT wall at {min_left:.2f}m (OK) → Moving FORWARD parallel"
+                state = (
+                    f"Left ~OK ({min_left:.2f} m, target "
+                    f"{self.dist_lim:.2f}±{self.tol:.2f}) → STRAIGHT"
+                )
 
             elif error < 0:
-                # Too close to left wall: move forward + slight right lateral
-                twist.linear.x = self.v_lin
-                twist.linear.y = -self.v_lat * 0.3  # Slight lateral correction
-                twist.angular.z = 0.0
-                state = f"LEFT wall TOO CLOSE at {min_left:.2f}m → Forward + RIGHT correction"
+                # Too close to left wall → slow forward + stronger right turn
+                twist.linear.x = self.v_lin * 0.5
+                twist.linear.y = 0.0
+                twist.angular.z = -self.v_ang * 2.0
+                state = (
+                    f"LEFT too CLOSE ({min_left:.2f} m < "
+                    f"{self.dist_lim:.2f}-{self.tol:.2f}) → "
+                    f"forward + strong RIGHT turn"
+                )
 
             else:
-                # Too far from left wall: move forward + slight left lateral
-                twist.linear.x = self.v_lin
-                twist.linear.y = self.v_lat * 0.3  # Slight lateral correction
-                twist.angular.z = 0.0
-                state = f"LEFT wall TOO FAR at {min_left:.2f}m → Forward + LEFT correction"
+                # Too far from left wall → slow forward + stronger left turn
+                twist.linear.x = self.v_lin * 0.5
+                twist.linear.y = 0.0
+                twist.angular.z = self.v_ang * 2.0
+                state = (
+                    f"RIGHT too FAR ({min_left:.2f} m > "
+                    f"{self.dist_lim:.2f}+{self.tol:.2f}) → "
+                    f"forward + strong LEFT turn"
+                )
 
-        # RULE 4: BACK-RIGHT obstacle → move FRONT-RIGHT (diagonal away)
-        elif math.isfinite(min_back_right) and min_back_right < self.dist_lim:
-            twist.linear.x = self.v_lin * 0.7
-            twist.linear.y = -self.v_lat * 0.5  # Move diagonally front-right
-            twist.angular.z = 0.0
-            state = f"BACK-RIGHT obstacle at {min_back_right:.2f}m → Moving FRONT-RIGHT (holonomic)"
 
-        # RULE 5: BACK obstacle → move RIGHT (lateral movement)
-        elif math.isfinite(min_back) and min_back < self.dist_lim:
-            twist.linear.x = 0.0
-            twist.linear.y = -self.v_lat  # Move right laterally
-            twist.angular.z = 0.0
-            state = f"BACK obstacle at {min_back:.2f}m → Moving RIGHT (holonomic)"
-
-        # RULE 6: BACK-LEFT → move forward-right
-        elif math.isfinite(min_back_left) and min_back_left < self.dist_lim:
-            twist.linear.x = self.v_lin * 0.7
-            twist.linear.y = -self.v_lat * 0.5
-            twist.angular.z = 0.0
-            state = f"BACK-LEFT obstacle at {min_back_left:.2f}m → Moving FRONT-RIGHT (holonomic)"
-
-        # DEFAULT: No obstacles detected, move forward
-        else:
-            twist.linear.x = self.v_lin
+        #----------------------------------------------------------
+        # RULE 4: BACK-LEFT → only if it is the most relevant wall
+        #----------------------------------------------------------
+        elif math.isfinite(min_back_left) and (
+            not math.isfinite(min_left) or min_back_left <= min_left
+        ):
+            twist.linear.x = self.v_lin * 0.1
             twist.linear.y = 0.0
-            twist.angular.z = 0.0
-            state = "No obstacles → Moving FORWARD"  
+            twist.angular.z = 2.0 * self.v_ang
+            state = (
+                f"BACK-LEFT {min_back_left:.2f} m → "
+                f"very slow + STRONG LEFT turn (2*w)"
+            )
 
+        # Update cmd
         self.cmd = twist
         self._state = state
 
         if state != self._last_logged_state:
             self.get_logger().info(state)
-            self._last_logged_state = state      
+            self._last_logged_state = state
+
     # -----------------------------------------
     def log_status(self):
         if not self._shutting_down:
