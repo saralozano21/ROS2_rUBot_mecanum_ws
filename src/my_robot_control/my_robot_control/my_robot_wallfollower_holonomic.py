@@ -40,7 +40,7 @@ class WallFollowerHolonomic(Node):
 
         self.get_logger().info("Holonomic Wall Follower — READY.")
 
-    # -----------------------------------------
+    
     def stop_watchdog(self):
         if self._shutting_down:
             return
@@ -49,7 +49,7 @@ class WallFollowerHolonomic(Node):
             self.get_logger().info("Timeout reached. Stopping robot.")
             self.stop()
 
-    # -----------------------------------------
+    
     def stop(self):
         self._shutting_down = True
         self.cmd = Twist()
@@ -65,7 +65,7 @@ class WallFollowerHolonomic(Node):
             except Exception:
                 pass
 
-    # -----------------------------------------
+    
     def send_cmd(self):
         if not self._shutting_down:
             try:
@@ -73,7 +73,7 @@ class WallFollowerHolonomic(Node):
             except Exception:
                 pass
 
-    # -----------------------------------------
+    
     def laser_callback(self, scan):
         if self._shutting_down:
             return
@@ -87,6 +87,7 @@ class WallFollowerHolonomic(Node):
         RIGHT = []
         BACK_RIGHT = []
         BACK = []
+        
 
         for i, d in enumerate(scan.ranges):
             if not math.isfinite(d):
@@ -106,6 +107,7 @@ class WallFollowerHolonomic(Node):
                 BACK_RIGHT.append(d)
             elif ang <= -160 or ang >= 160:
                 BACK.append(d)
+           
 
         # Get minimum distances
         min_front      = min(FRONT)        if FRONT else float('inf')
@@ -113,57 +115,59 @@ class WallFollowerHolonomic(Node):
         min_right      = min(RIGHT)        if RIGHT else float('inf')
         min_back_right = min(BACK_RIGHT)   if BACK_RIGHT else float('inf')
         min_back       = min(BACK)         if BACK else float('inf')
+    
 
         twist = Twist()
         state = ""
 
-        # ------------------------------------------------------------
-        #  HOLONOMIC BEHAVIOUR — EXACTLY AS REQUESTED BY THE ASSIGNMENT
-        # ------------------------------------------------------------
 
+
+        # HOLONOMIC BEHAVIOR
+
+        # Obstacle in front
         if min_front < self.dist_lim:
-            # Obstacle in front → move LEFT
             twist.linear.x = 0.0
             twist.linear.y = +self.vy
             twist.angular.z = 0.0
             state = "FRONT → Move LEFT"
 
+        # Front-right
         elif min_fr_right < self.dist_lim:
-            # Obstacle front-right → move front-left (diagonal)
             twist.linear.x = +self.vx
             twist.linear.y = +self.vy
             twist.angular.z = 0.0
             state = "FRONT-RIGHT → Move FRONT-LEFT"
 
+        # Right
         elif min_right < self.dist_lim:
-            # Right wall → follow it going forward
             twist.linear.x = +self.vx
             twist.linear.y = 0.0
             twist.angular.z = 0.0
             state = "RIGHT → Move FORWARD"
 
+        # Back-right
         elif min_back_right < self.dist_lim:
-            # Behind on right → move front-right (diagonal)
             twist.linear.x = +self.vx
             twist.linear.y = -self.vy
             twist.angular.z = 0.0
             state = "BACK-RIGHT → Move FRONT-RIGHT"
 
+        # Back 
         elif min_back < self.dist_lim:
-            # Something behind → move RIGHT
             twist.linear.x = 0.0
             twist.linear.y = -self.vy
             twist.angular.z = 0.0
             state = "BACK → Move RIGHT"
 
+
         else:
-            # No obstacles near → just go forward
+            # Nothing close → go forward
             twist.linear.x = self.vx
             twist.linear.y = 0.0
             twist.angular.z = 0.0
             state = "CLEAR → Move FORWARD"
 
-        # Update cmd
+        # Update command
         self.cmd = twist
         self._state = state
 
@@ -171,7 +175,7 @@ class WallFollowerHolonomic(Node):
             self.get_logger().info(state)
             self._last_logged_state = state
 
-    # -----------------------------------------
+    
     def log_status(self):
         if not self._shutting_down:
             self.get_logger().info(self._state)
@@ -195,3 +199,4 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
