@@ -87,6 +87,10 @@ class WallFollowerHolonomic(Node):
         RIGHT = []
         BACK_RIGHT = []
         BACK = []
+        FRONT_LEFT = []
+        LEFT = []
+        BACK_LEFT = []
+
         
 
         for i, d in enumerate(scan.ranges):
@@ -107,6 +111,12 @@ class WallFollowerHolonomic(Node):
                 BACK_RIGHT.append(d)
             elif ang <= -160 or ang >= 160:
                 BACK.append(d)
+            elif 20 <= ang < 70:
+                FRONT_LEFT.append(d)
+            elif 70 <= ang < 110:
+                LEFT.append(d)
+            elif 110 <= ang < 160:
+                BACK_LEFT.append(d)
            
 
         # Get minimum distances
@@ -115,7 +125,10 @@ class WallFollowerHolonomic(Node):
         min_right      = min(RIGHT)        if RIGHT else float('inf')
         min_back_right = min(BACK_RIGHT)   if BACK_RIGHT else float('inf')
         min_back       = min(BACK)         if BACK else float('inf')
-    
+        min_fr_left = min(FRONT_LEFT) if FRONT_LEFT else float('inf')
+        min_left      = min(LEFT)        if LEFT else float('inf')
+        min_back_left = min(BACK_LEFT)   if BACK_LEFT else float('inf')
+
 
         twist = Twist()
         state = ""
@@ -158,6 +171,27 @@ class WallFollowerHolonomic(Node):
             twist.linear.y = -self.vy
             twist.angular.z = 0.0
             state = "BACK → Move RIGHT"
+            
+        # Front-left
+        elif min_fr_left < self.dist_lim:
+            twist.linear.x = +self.vx
+            twist.linear.y = -self.vy
+            twist.angular.z = 0.0
+            state = "FRONT-LEFT → Move FRONT-RIGHT"
+
+        #left
+        elif min_left < self.dist_lim:
+            twist.linear.x = -self.vx
+            twist.linear.y = 0.0
+            twist.angular.z = 0.0
+            state = "LEFT → Move BACK"
+
+        #back left
+        elif min_back_left < self.dist_lim:
+            twist.linear.x = -self.vx
+            twist.linear.y = -self.vy
+            twist.angular.z = 0.0
+            state = "BACK-LEFT → Move BACKWARD-RIGHT"
 
 
         else:
