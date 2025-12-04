@@ -109,7 +109,7 @@ class WallFollowerHolonomic(Node):
                 RIGHT.append(d)
             elif -160 <= ang < -110:
                 BACK_RIGHT.append(d)
-            elif ang <= -160 or ang >= 160:
+            elif 160 <= ang < -160:
                 BACK.append(d)
             elif 20 <= ang < 70:
                 FRONT_LEFT.append(d)
